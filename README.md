@@ -115,7 +115,7 @@ docker compose up -d
 
 ```bash
 cp .env.example .env
-# then edit JWT_SECRET to something long & random
+# then edit JWT_SECRET to something long and random
 ```
 
 ### 4. Run the database migration
