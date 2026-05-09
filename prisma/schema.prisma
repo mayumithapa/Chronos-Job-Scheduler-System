@@ -1,0 +1,101 @@
+// Chronos Prisma Schema
+// Generates the Prisma Client and defines the data model used by the API
+// server and the worker process.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+  PAUSED
+}
+
+enum JobType {
+  EMAIL
+  WEBHOOK
+  LOG
+  CUSTOM
+}
+
+enum JobPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum RunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  email     String   @unique @db.VarChar(180)
+  password  String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jobs Job[]
+
+  @@map("users")
+}
+
+model Job {
+  id             String      @id @default(uuid()) @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  name           String      @db.VarChar(180)
+  type           JobType     @default(LOG)
+  payload        Json        @default("{}")
+  status         JobStatus   @default(PENDING)
+  scheduledAt    DateTime?   @map("scheduled_at")
+  cronExpression String?     @map("cron_expression") @db.VarChar(120)
+  retryCount     Int         @default(0) @map("retry_count")
+  maxRetries     Int         @default(3) @map("max_retries")
+  priority       JobPriority @default(NORMAL)
+  // BullMQ internal references so we can cancel / reschedule queue entries
+  queueJobId     String?     @map("queue_job_id") @db.VarChar(120)
+  repeatJobKey   String?     @map("repeat_job_key") @db.VarChar(255)
+  lastError      String?     @map("last_error")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs JobRun[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("jobs")
+}
+
+model JobRun {
+  id             String    @id @default(uuid()) @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  status         RunStatus
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  errorMessage   String?   @map("error_message") @db.Text
+  executionTime  Int?      @map("execution_time") // milliseconds
+  attemptNumber  Int       @default(1) @map("attempt_number")
+  output         Json?
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status])
+  @@map("job_runs")
+}

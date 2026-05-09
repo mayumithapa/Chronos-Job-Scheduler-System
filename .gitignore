@@ -1,0 +1,23 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build / coverage
+dist/
+build/
+coverage/
+
+# Prisma
+prisma/migrations/dev.db*
