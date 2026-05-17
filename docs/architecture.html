@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chronos · High-Level Design</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --ink: #0f172a;
+      --ink-soft: #475569;
+      --line: #cbd5e1;
+      --client: #64748b;
+      --api: #2563eb;
+      --worker: #16a34a;
+      --postgres: #0f172a;
+      --redis: #dc2626;
+      --accent: #7c3aed;
+      --callout-bg: #ffffff;
+      --callout-border: #e2e8f0;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      padding: 32px 56px;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 36px;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+    }
+    header .subtitle {
+      color: var(--ink-soft);
+      font-size: 18px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 40px;
+      align-items: center;
+      min-height: 0;
+    }
+    .diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+    }
+    .diagram svg {
+      width: 100%;
+      max-width: 900px;
+      height: auto;
+      max-height: 100%;
+    }
+    aside {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .callout {
+      background: var(--callout-bg);
+      border: 1px solid var(--callout-border);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 14px 18px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+    .callout h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .callout p {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid var(--callout-border);
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+    footer .stack {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    footer .pill {
+      padding: 4px 10px;
+      background: white;
+      border: 1px solid var(--callout-border);
+      border-radius: 999px;
+      font-weight: 500;
+      color: var(--ink);
+    }
+
+    /* Ensure readable line/font sizes for typical 1080p screen recordings. */
+    @media (max-width: 1280px) {
+      body { padding: 24px 32px; }
+      header h1 { font-size: 30px; }
+      main { grid-template-columns: 1fr 320px; gap: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chronos</h1>
+    <span class="subtitle">High-Level Design</span>
+  </header>
+
+  <main>
+    <!-- Diagram -->
+    <div class="diagram">
+      <svg viewBox="0 0 880 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Chronos architecture diagram">
+        <!-- Arrow marker -->
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+          </marker>
+          <style>
+            .box { stroke-width: 2; rx: 12; ry: 12; }
+            .box-label { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 700; font-size: 18px; fill: white; }
+            .box-sub { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; fill: rgba(255,255,255,0.85); }
+            .arrow-label { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; fill: #475569; font-style: italic; }
+            .edge { stroke: #475569; stroke-width: 2; fill: none; }
+          </style>
+        </defs>
+
+        <!-- Client -->
+        <rect class="box" x="340" y="20" width="200" height="70" fill="#64748b" stroke="#475569" />
+        <text x="440" y="50" text-anchor="middle" class="box-label">Browser / API client</text>
+        <text x="440" y="72" text-anchor="middle" class="box-sub">React dashboard · curl · Postman</text>
+
+        <!-- arrow client -> api -->
+        <line class="edge" x1="440" y1="90" x2="440" y2="135" marker-end="url(#arrow)" />
+        <text x="450" y="115" class="arrow-label">HTTPS · REST · JWT</text>
+
+        <!-- API -->
+        <rect class="box" x="280" y="135" width="320" height="100" fill="#2563eb" stroke="#1d4ed8" />
+        <text x="440" y="170" text-anchor="middle" class="box-label">API SERVER</text>
+        <text x="440" y="195" text-anchor="middle" class="box-sub">Express · Prisma · Zod · JWT</text>
+        <text x="440" y="215" text-anchor="middle" class="box-sub">stateless · only schedules · scales horizontally</text>
+
+        <!-- arrow api -> postgres (right) -->
+        <path class="edge" d="M 600 175 Q 720 175 720 175" marker-end="url(#arrow)" />
+        <text x="660" y="167" text-anchor="middle" class="arrow-label">writes job + run</text>
+
+        <!-- arrow api -> redis (down-left) -->
+        <line class="edge" x1="380" y1="235" x2="270" y2="290" marker-end="url(#arrow)" />
+        <text x="290" y="260" class="arrow-label">push to queue</text>
+
+        <!-- Redis -->
+        <rect class="box" x="80" y="290" width="240" height="100" fill="#dc2626" stroke="#b91c1c" />
+        <text x="200" y="325" text-anchor="middle" class="box-label">REDIS · BullMQ</text>
+        <text x="200" y="350" text-anchor="middle" class="box-sub">queue: waiting · delayed</text>
+        <text x="200" y="370" text-anchor="middle" class="box-sub">repeatable cron · retries</text>
+
+        <!-- arrow redis -> worker (down) -->
+        <line class="edge" x1="200" y1="390" x2="200" y2="445" marker-end="url(#arrow)" />
+        <text x="210" y="425" class="arrow-label">pull next ready job</text>
+
+        <!-- Worker -->
+        <rect class="box" x="80" y="445" width="240" height="100" fill="#16a34a" stroke="#15803d" />
+        <text x="200" y="480" text-anchor="middle" class="box-label">WORKER</text>
+        <text x="200" y="505" text-anchor="middle" class="box-sub">BullMQ consumer</text>
+        <text x="200" y="525" text-anchor="middle" class="box-sub">runs handler · manages retries</text>
+
+        <!-- Postgres (right column) -->
+        <rect class="box" x="600" y="135" width="240" height="240" fill="#0f172a" stroke="#1e293b" />
+        <text x="720" y="170" text-anchor="middle" class="box-label">PostgreSQL</text>
+        <text x="720" y="192" text-anchor="middle" class="box-sub">source of truth</text>
+        <line x1="620" y1="206" x2="820" y2="206" stroke="rgba(255,255,255,0.2)" />
+        <text x="720" y="232" text-anchor="middle" class="box-sub">users</text>
+        <text x="720" y="258" text-anchor="middle" class="box-sub">jobs</text>
+        <text x="720" y="284" text-anchor="middle" class="box-sub">job_runs (audit log)</text>
+        <line x1="620" y1="298" x2="820" y2="298" stroke="rgba(255,255,255,0.2)" />
+        <text x="720" y="325" text-anchor="middle" class="box-sub">durable · transactional</text>
+        <text x="720" y="348" text-anchor="middle" class="box-sub">survives Redis loss</text>
+
+        <!-- arrow worker -> postgres (curve right) -->
+        <path class="edge" d="M 320 495 Q 500 495 600 360" marker-end="url(#arrow)" />
+        <text x="490" y="510" text-anchor="middle" class="arrow-label">read job · write run history · update status</text>
+      </svg>
+    </div>
+
+    <!-- Right rail: design rationale -->
+    <aside>
+      <div class="callout">
+        <h3>1 · Two processes</h3>
+        <p>API <strong>only schedules</strong>. Worker <strong>only executes</strong>. A slow job can never block the API; a worker crash never kills HTTP.</p>
+      </div>
+      <div class="callout">
+        <h3>2 · Two stores</h3>
+        <p><strong>Postgres = durability</strong> (every job and every run). <strong>Redis = speed</strong> (queue + delayed delivery). If Redis is wiped, jobs are recoverable from Postgres.</p>
+      </div>
+      <div class="callout">
+        <h3>3 · Horizontal scale</h3>
+        <p>Run 1 API and N workers on the same queue — BullMQ load-balances jobs automatically. <code>docker compose up --scale worker=5</code>.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <div class="stack">
+      <span class="pill">Node.js 20</span>
+      <span class="pill">Express</span>
+      <span class="pill">Prisma + Postgres 16</span>
+      <span class="pill">BullMQ + Redis 7</span>
+      <span class="pill">JWT</span>
+      <span class="pill">React + Vite</span>
+      <span class="pill">Docker</span>
+    </div>
+    <span>github.com/mayumithapa/Chronos-Job-Scheduler-System</span>
+  </footer>
+</body>
+</html>

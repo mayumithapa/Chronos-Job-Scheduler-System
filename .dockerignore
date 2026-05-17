@@ -1,0 +1,41 @@
+# Files we never want baked into a Docker image.
+
+# Dependencies and build artifacts (rebuilt inside the image).
+node_modules/
+frontend/node_modules/
+dist/
+build/
+coverage/
+
+# Local env files — secrets must come in via docker-compose env vars,
+# not by copying a developer's .env into the image.
+.env
+.env.*
+!.env.example
+
+# Local logs (the container creates its own /app/logs at runtime).
+logs/
+*.log
+
+# Frontend build artifacts (frontend has its own Dockerfile, this one
+# only builds the backend).
+frontend/
+
+# Documentation and other repo metadata not needed inside the image.
+docs/
+*.md
+!README.md
+
+# Editor / OS junk.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Git metadata — keeps the build context small and avoids leaking history.
+.git/
+.gitignore
+.gitattributes
+
+# Prisma dev artifacts.
+prisma/migrations/dev.db*
