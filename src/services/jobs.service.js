@@ -81,15 +81,34 @@ function nextRunFromCron(cronExpression) {
   }
 }
 
-// "Next run" is only meaningful while a job is actively waiting/working.
-// Paused/cancelled/done jobs have no scheduled future execution.
+// "Next run" is only meaningful while a job is actively waiting or working —
+// PAUSED, CANCELLED, SUCCESS, and FAILED jobs all have no scheduled future
+// execution and must report `nextRunAt: null`.
 const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
 
+/**
+ * Compute the next time a job is expected to run.
+ *
+ * The result is shown to the UI as a "Next run in 38s"-style countdown, and is
+ * also surfaced in API responses for `GET /jobs` and `GET /jobs/:id`.
+ *
+ * Resolution order:
+ *   1. If the job is not in an "active" status (PENDING/QUEUED/RUNNING), there
+ *      is no next run by definition — return null. This is what makes paused
+ *      and cancelled jobs stop showing a misleading countdown in the UI.
+ *   2. If the job has a `cronExpression`, parse it and return the next cron
+ *      tick. Invalid expressions fall through to `null` via `nextRunFromCron`.
+ *   3. Otherwise it's a one-time job — return `scheduledAt` (which may itself
+ *      be null for an "as soon as possible" job that has already been picked
+ *      up; in that case there is no future run to report).
+ *
+ * @param {{ status: string, cronExpression: string|null, scheduledAt: Date|null }} job
+ * @returns {Date|null}
+ */
 function computeNextRunAt(job) {
-  if (!ACTIVE_STATUSES.has(job.status)) return null;
-  return job.cronExpression
-    ? nextRunFromCron(job.cronExpression)
-    : job.scheduledAt;
+  if (!job || !ACTIVE_STATUSES.has(job.status)) return null;
+  if (job.cronExpression) return nextRunFromCron(job.cronExpression);
+  return job.scheduledAt ?? null;
 }
 
 // ---------- core API ----------
