@@ -71,7 +71,9 @@ The worker process **only executes** jobs (pulls from BullMQ, calls handlers, wr
 
 ```
 chronos/
-├── docker-compose.yml          # Postgres + Redis for local dev
+├── Dockerfile                  # Backend image (used by api + worker services)
+├── docker-compose.yml          # Full stack: postgres + redis + api + worker + frontend
+├── .dockerignore
 ├── prisma/
 │   ├── schema.prisma
 │   └── seed.js
@@ -90,32 +92,104 @@ chronos/
 │   │   └── handlers/           # email, webhook, log, custom
 │   ├── validators/             # Zod schemas
 │   └── utils/                  # ApiError, ApiResponse, asyncHandler, priority
-└── logs/                       # auto-created at runtime
+├── frontend/                   # React + Vite dashboard
+│   ├── Dockerfile              # Static build served by nginx with /api proxy
+│   ├── nginx.conf
+│   └── src/                    # pages, components, hooks, api client
+└── logs/                       # auto-created at runtime (mounted as a volume in Docker)
 ```
 
-## Quick start
+## Quick start — Docker (recommended)
 
-> Requires Node.js 18+. Recommended: Docker for Postgres + Redis.
+The fastest way to run the entire stack — Postgres, Redis, API, worker, and frontend — is with Docker. This requires only **Docker Desktop** (or Docker Engine + Compose plugin) on your machine.
 
-### 1. Clone and install
+```bash
+git clone https://github.com/mayumithapa/Chronos-Job-Scheduler-System.git
+cd Chronos-Job-Scheduler-System
+docker compose up -d --build
+```
+
+That's it. After ~30 seconds (first build is slower; subsequent runs are nearly instant) everything is reachable at:
+
+| URL | What it is |
+| --- | --- |
+| http://localhost:5173 | React dashboard (frontend) |
+| http://localhost:5173/api/v1/docs | Swagger / OpenAPI docs (proxied) |
+| http://localhost:5173/admin/queues | Bull Board admin UI (proxied) |
+| http://localhost:4000/api/v1 | API server (direct) |
+| http://localhost:4000/api/v1/health/ready | Liveness probe (DB + Redis) |
+
+**Demo login** (auto-seeded into Postgres on first boot):
+
+- email: `demo@chronos.local`
+- password: `demo12345`
+
+### What `docker compose up` actually does
+
+Five containers come up with proper dependency ordering and healthchecks:
+
+1. `postgres` (Postgres 16) — persisted to a named volume
+2. `redis` (Redis 7) — persisted to a named volume
+3. `api` — runs `prisma migrate deploy`, seeds the demo user, then starts the Express API on port 4000
+4. `worker` — runs the BullMQ worker (`node src/workers/index.js`); waits for the API container to be healthy so migrations are applied first
+5. `frontend` — nginx serving the production Vite build, reverse-proxying `/api/*` and `/admin/*` to the `api` container
+
+Default service environment is wired in `docker-compose.yml` — all services share the same connection strings via a YAML anchor, so there's nothing to copy/paste. To override `JWT_SECRET` (recommended for anything other than a local demo), put it in a `.env` file next to `docker-compose.yml`:
+
+```env
+JWT_SECRET=replace-this-with-a-long-random-string
+```
+
+### Useful commands
+
+```bash
+docker compose logs -f api worker          # tail backend logs
+docker compose logs -f frontend            # tail nginx access logs
+docker compose ps                          # see container health
+docker compose restart worker              # bounce just the worker
+docker compose down                        # stop everything (volumes preserved)
+docker compose down -v                     # stop + wipe DB and Redis (full reset)
+docker compose up -d --scale worker=3      # run 3 worker replicas (BullMQ load-balances jobs across them)
+```
+
+### Demoing retries
+
+Once everything is up, log in at http://localhost:5173 and create a job with:
+
+- **Type:** CUSTOM
+- **Payload:** `{ "fail": true, "failMessage": "boom" }`
+- **Max retries:** 3
+- **Scheduled time:** leave blank (runs immediately)
+
+Watch the Execution History on the job's detail page — attempts will pile up with exponential backoff (5s → 10s → 20s) and finally mark the job FAILED. The retry events are also visible in `docker compose logs -f worker` and on Bull Board.
+
+---
+
+## Quick start — Native (without Docker)
+
+> Requires Node.js 18+. Use this path if you don't want to install Docker, or if you'd rather run the API/worker with `nodemon` for hot reload while developing.
+
+### 1. Install dependencies
 
 ```bash
 npm install
+cd frontend && npm install && cd ..
 ```
 
 ### 2. Start Postgres + Redis
 
 ```bash
-docker compose up -d
+docker compose up -d postgres redis
 ```
 
-…or install Postgres + Redis natively and update `DATABASE_URL` / `REDIS_*` in `.env`.
+…or install Postgres + Redis natively, or point `DATABASE_URL` / `REDIS_URL` in `.env` at managed services like [Neon](https://neon.tech) and [Upstash](https://upstash.com).
 
 ### 3. Configure environment
 
 ```bash
 cp .env.example .env
 # then edit JWT_SECRET to something long and random
+cp frontend/.env.example frontend/.env
 ```
 
 ### 4. Run the database migration
@@ -125,7 +199,7 @@ npm run prisma:migrate -- --name init
 npm run db:seed   # optional — creates demo@chronos.local / demo12345
 ```
 
-### 5. Start the API and the worker (two terminals)
+### 5. Start the API, the worker, and the frontend (three terminals)
 
 ```bash
 # Terminal 1
@@ -133,6 +207,9 @@ npm run dev
 
 # Terminal 2
 npm run worker:dev
+
+# Terminal 3
+cd frontend && npm run dev
 ```
 
 The API will print:
@@ -142,6 +219,8 @@ Chronos API listening on http://localhost:4000
 Docs: http://localhost:4000/api/v1/docs
 Bull Board: http://localhost:4000/admin/queues
 ```
+
+The frontend will print `Local: http://localhost:5173/`.
 
 ## API tour
 

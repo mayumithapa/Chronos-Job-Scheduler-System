@@ -1,4 +1,32 @@
-version: "3.9"
+# Chronos — full-stack docker-compose
+#
+# Brings up: postgres, redis, api, worker, and frontend.
+# After `docker compose up -d` the system is reachable at:
+#   - Frontend  http://localhost:5173
+#   - API docs  http://localhost:5173/api/v1/docs   (proxied by nginx)
+#   - API docs  http://localhost:4000/api/v1/docs   (direct)
+#   - Bull UI   http://localhost:5173/admin/queues  (proxied)
+#   - Bull UI   http://localhost:4000/admin/queues  (direct)
+#
+# Default credentials match the seeded demo user:
+#   email:    demo@chronos.local
+#   password: demo12345
+
+# Shared environment for the Node services. YAML anchor keeps it DRY between
+# the api and worker (they read the exact same env).
+x-node-env: &node-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://chronos:chronos@postgres:5432/chronos?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:-replace-me-in-production-with-a-long-random-string}
+  JWT_EXPIRES_IN: 7d
+  JOB_QUEUE_NAME: chronos-jobs
+  WORKER_CONCURRENCY: 5
+  DEFAULT_MAX_RETRIES: 3
+  DEFAULT_RETRY_BACKOFF_MS: 5000
+  LOG_LEVEL: info
+  BULL_BOARD_ENABLED: "true"
+  BULL_BOARD_PATH: /admin/queues
 
 services:
   postgres:
@@ -9,8 +37,6 @@ services:
       POSTGRES_USER: chronos
       POSTGRES_PASSWORD: chronos
       POSTGRES_DB: chronos
-    ports:
-      - "5432:5432"
     volumes:
       - chronos_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,8 +49,6 @@ services:
     image: redis:7-alpine
     container_name: chronos-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - chronos_redis_data:/data
     healthcheck:
@@ -33,6 +57,73 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chronos-app:latest
+    container_name: chronos-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *node-env
+      PORT: "4000"
+      API_BASE_PATH: /api/v1
+    ports:
+      - "4000:4000"
+    # Apply any pending Prisma migrations on startup, then launch the API.
+    # Safe to re-run — migrate deploy is idempotent.
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             node prisma/seed.js || true &&
+             node src/server.js"
+    volumes:
+      - chronos_logs:/app/logs
+    healthcheck:
+      test:
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    # Reuse the same image the api service builds.
+    image: chronos-app:latest
+    container_name: chronos-worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: *node-env
+    command: ["node", "src/workers/index.js"]
+    volumes:
+      - chronos_logs:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: chronos-frontend:latest
+    container_name: chronos-frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
 volumes:
   chronos_pg_data:
   chronos_redis_data:
+  chronos_logs:
