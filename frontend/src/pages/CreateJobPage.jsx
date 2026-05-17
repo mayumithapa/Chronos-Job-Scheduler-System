@@ -91,8 +91,6 @@ export default function CreateJobPage() {
 
     if (form.recurring) {
       if (!form.cron.trim()) nextErrors.cron = "Cron expression is required";
-    } else if (!form.scheduledAt) {
-      nextErrors.scheduledAt = "Pick a date/time or check Recurring";
     }
 
     setErrors(nextErrors);
@@ -108,9 +106,11 @@ export default function CreateJobPage() {
 
     if (form.recurring) {
       body.cron = form.cron.trim();
-    } else {
+    } else if (form.scheduledAt) {
       body.scheduledAt = fromDatetimeLocalValue(form.scheduledAt);
     }
+    // If neither cron nor scheduledAt is provided, the backend runs the job
+    // immediately (scheduledAt defaults to "now").
 
     setSubmitting(true);
     try {
@@ -244,13 +244,13 @@ export default function CreateJobPage() {
           </div>
         ) : (
           <FormInput
-            label="Scheduled time"
+            label="Scheduled time (optional)"
             name="scheduledAt"
             type="datetime-local"
             value={form.scheduledAt}
             onChange={(e) => setField("scheduledAt", e.target.value)}
             error={errors.scheduledAt}
-            hint="Local time. Will be converted to UTC before sending."
+            hint="Leave blank to run immediately. Otherwise local time, converted to UTC before sending."
           />
         )}
 

@@ -81,6 +81,17 @@ function nextRunFromCron(cronExpression) {
   }
 }
 
+// "Next run" is only meaningful while a job is actively waiting/working.
+// Paused/cancelled/done jobs have no scheduled future execution.
+const ACTIVE_STATUSES = new Set(["PENDING", "QUEUED", "RUNNING"]);
+
+function computeNextRunAt(job) {
+  if (!ACTIVE_STATUSES.has(job.status)) return null;
+  return job.cronExpression
+    ? nextRunFromCron(job.cronExpression)
+    : job.scheduledAt;
+}
+
 // ---------- core API ----------
 
 async function createJob(userId, payload) {
@@ -149,9 +160,7 @@ async function listJobs(userId, { status, type, page, pageSize }) {
 
   const enhanced = items.map((job) => ({
     ...job,
-    nextRunAt: job.cronExpression
-      ? nextRunFromCron(job.cronExpression)
-      : job.scheduledAt,
+    nextRunAt: computeNextRunAt(job),
   }));
 
   return {
@@ -178,9 +187,7 @@ async function getJob(userId, id) {
   if (!job) throw ApiError.notFound("Job not found");
   return {
     ...job,
-    nextRunAt: job.cronExpression
-      ? nextRunFromCron(job.cronExpression)
-      : job.scheduledAt,
+    nextRunAt: computeNextRunAt(job),
   };
 }
 
